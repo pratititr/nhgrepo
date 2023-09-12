@@ -31,6 +31,7 @@ stages:
       displayName: 'Test Application'
       
 - stage: DeployDevCanary
+  dependsOn: Build
   jobs:
   - job: DeploytoDev
     steps:
@@ -81,6 +82,7 @@ stages:
 
 
 - stage: DeployTestCanary
+  dependsOn: DeployDevCanary
   jobs:
   - job: DeploytoTest
     steps:
