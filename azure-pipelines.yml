@@ -1,0 +1,30 @@
+trigger:
+- main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+- script: |
+    # Define your Azure Resource Manager deployment parameters
+    resourceGroupName="YourResourceGroupName"
+    deploymentName="YourDeploymentName"
+    templateFile="infratemplates/staticwebsite.bicep"
+    parametersFile=""
+
+    # Azure Login
+    az login --service-principal -u $servicePrincipalId -p $servicePrincipalKey --tenant $tenantId
+
+    # Create or update the resource group deployment
+    az deployment group create --name $deploymentName --resource-group $resourceGroupName --template-file $templateFile --parameters \
+    location="East US" \
+    storageAccountName="nhgtorageaccountname" \
+    cdnProfileName="nhgcdnprofilename" \
+    cdnEndpointName="nhgcdnendpointname"
+    
+  displayName: 'Azure Deployment'
+  env:
+    ARM_CLIENT_ID: $(servicePrincipalId)
+    ARM_CLIENT_SECRET: $(servicePrincipalKey)
+    ARM_SUBSCRIPTION_ID: $(subscriptionId)
+    ARM_TENANT_ID: $(tenantId)
