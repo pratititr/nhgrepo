@@ -1,26 +1,62 @@
 trigger:
 - main
 
+pr:
+- '*'
+
 pool:
   vmImage: 'ubuntu-latest'
 
-steps:
-- script: |
-    # Define your Azure Resource Manager deployment parameters
-    resourceGroupName="YourResourceGroupName"
-    deploymentName="YourDeploymentName"
-    templateFile="infratemplates/staticwebsite.bicep"
-    parametersFile=""
+Variables:
+  azureSubscription: 'nhgAzureSubscription'  
 
-    # Azure Login
+
+stages:
+- stage: Build
+  jobs:
+  - job: Build
+    steps:
+    - script: |
+      displayName: 'Build Static Website'
+
+    - task: PublishPipelineArtifact@1
+      inputs:
+        targetPath: '$(Build.ArtifactStagingDirectory)'
+        artifact: 'static-website-artifact'
+      displayName: 'Publish Static Website Artifact'
+      
+  - job: Test
+    steps:
+    - script: |
+      displayName: 'Test Application'
+      
+- stage: DeployDevCanary
+  jobs:
+  - job: DeploytoDev
+    steps:
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: '3.x'
+        addToPath: true
+      displayName: 'Use Python 3.x'
+
+    - script: |
+
+    # Azure Resource Manager deployment parameters
+      resourceGroupName="DevResourceGroupName"
+      deploymentName="DevDeploymentName"
+      templateFile="infratemplates/staticwebsite.bicep"
+      parametersFile=""
+
+    # Authenticate with Azure using the service principal
     az login --service-principal -u $servicePrincipalId -p $servicePrincipalKey --tenant $tenantId
 
     # Create or update the resource group deployment
     az deployment group create --name $deploymentName --resource-group $resourceGroupName --template-file $templateFile --parameters \
     location="East US" \
-    storageAccountName="nhgtorageaccountname" \
-    cdnProfileName="nhgcdnprofilename" \
-    cdnEndpointName="nhgcdnendpointname"
+    storageAccountName="nhgdevstorageaccountname" \
+    cdnProfileName="nhgdevcdnprofilename" \
+    cdnEndpointName="nhgdevcdnendpointname"
     
   displayName: 'Azure Deployment'
   env:
@@ -28,3 +64,68 @@ steps:
     ARM_CLIENT_SECRET: $(servicePrincipalKey)
     ARM_SUBSCRIPTION_ID: $(subscriptionId)
     ARM_TENANT_ID: $(tenantId)
+        
+
+  # Deploy website files to Azure Storage
+      az storage blob upload-batch --destination $web --source $(Pipeline.Workspace)/static-website-artifact --account-name $(storageAccountName)
+      displayName: 'Deploy to Azure Dev Storage'
+
+    - task: AzureCLI@2
+      inputs:
+        azureSubscription: $(azureSubscription)
+        scriptType: 'bash'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          az cdn endpoint purge --profile-name $cdnProfileName --name $cdnEndpointName --content-paths "/*"
+      displayName: 'Invalidate CDN Cache (if applicable)'
+
+
+- stage: DeployTestCanary
+  jobs:
+  - job: DeploytoTest
+    steps:
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: '3.x'
+        addToPath: true
+      displayName: 'Use Python 3.x'
+
+    - script: |
+
+    # Azure Resource Manager deployment parameters
+      resourceGroupName="TestResourceGroupName"
+      deploymentName="TestDeploymentName"
+      templateFile="infratemplates/staticwebsite.bicep"
+      parametersFile=""
+
+    # Authenticate with Azure using the service principal
+    az login --service-principal -u $servicePrincipalId -p $servicePrincipalKey --tenant $tenantId
+
+    # Create or update the resource group deployment
+    az deployment group create --name $deploymentName --resource-group $resourceGroupName --template-file $templateFile --parameters \
+    location="East US" \
+    storageAccountName="nhgteststorageaccountname" \
+    cdnProfileName="nhgtestcdnprofilename" \
+    cdnEndpointName="nhgtestcdnendpointname"
+    
+  displayName: 'Azure Deployment'
+  env:
+    ARM_CLIENT_ID: $(servicePrincipalId)
+    ARM_CLIENT_SECRET: $(servicePrincipalKey)
+    ARM_SUBSCRIPTION_ID: $(subscriptionId)
+    ARM_TENANT_ID: $(tenantId)
+        
+
+  # Deploy website files to Azure Storage
+      az storage blob upload-batch --destination $web --source $(Pipeline.Workspace)/static-website-artifact --account-name $(storageAccountName)
+      displayName: 'Deploy to Azure Dev Storage'
+
+    - task: AzureCLI@2
+      inputs:
+        azureSubscription: $(azureSubscription)
+        scriptType: 'bash'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          az cdn endpoint purge --profile-name $cdnProfileName --name $cdnEndpointName --content-paths "/*"
+      displayName: 'Invalidate CDN Cache (if applicable)'
+
